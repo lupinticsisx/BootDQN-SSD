@@ -43,7 +43,7 @@ class BootDQN(nn.Module):
         self.num_heads = num_heads
 
 
-    def forward(self,x,k,mask):
+    def forward(self,x,k):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         x = self.d_D_batch(x)
         x = x.to(device)
@@ -51,17 +51,16 @@ class BootDQN(nn.Module):
         x = F.relu(x)
         x = self.fc2(x)
         x = F.relu(x)  
-        if mask is None:
-            if k is not None and k < self.num_heads: 
-                '''BootDQN'''
-                x = self.net_list[k](x)
-            else:
-                '''NaiveDQN'''
-                x = self.net_list[0](x)
+        
+        if k is not None and k < self.num_heads: 
+            '''BootDQN'''
+            x = self.net_list[k](x)
         else:
-            print('mask is not available yet')
+            '''NaiveDQN'''
+            x = self.net_list[0](x)
 
 
+        
         return x
 
 
