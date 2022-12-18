@@ -60,7 +60,7 @@ class BootDQN(nn.Module):
             x = self.net_list[0](x)
 
 
-        
+
         return x
 
 
@@ -73,7 +73,7 @@ class BootDQN(nn.Module):
     ''' tensor: int to float '''
     def d_D_batch(self,aaa):
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        aaa = aaa.float()
+        aaa = aaa.to(torch.float32)
         return aaa.to(device)
 
 
@@ -112,13 +112,14 @@ class DQN(nn.Module):
         # int to float
     def d_D(self,aaa):
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        aaa = aaa.float()
+        aaa = aaa.to(torch.float32)
         aaa = torch.unsqueeze(aaa, dim=0)
         return aaa.to(device)
     
     def d_D_batch(self,aaa):
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        aaa = aaa.float()
+        # aaa = aaa.float32()
+        aaa = aaa.to(torch.float32)
         return aaa.to(device)
 
     def select_1st(self,tensor):
@@ -156,8 +157,8 @@ class Agent_1(nn.Module):
         if COOP == 0:
             y = 1 # defect
         else:
-            y = 0
-            # y = np.random.choice([0,1],1, p=[0.85, 0.15])[0] # cooperate
+            # y = 0
+            y = np.random.choice([0,1],1, p=[0.85, 0.15])[0] # cooperate
         y = torch.tensor([y]).to(device)
         return y
 
@@ -165,7 +166,7 @@ class Agent_1(nn.Module):
     def d_D(self,aaa):
         bbb = []
         for i in range(len(aaa)):
-            bbb.append(aaa[i].to(torch.float))
+            bbb.append(aaa[i].to(torch.float32))
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         return torch.tensor([bbb]).to(device)
 

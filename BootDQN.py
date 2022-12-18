@@ -6,6 +6,7 @@ source and inspired by
 https://github.com/johannah/bootstrap_dqn/blob/master/dqn_model.py
 
 '''
+# todo: evaluation
 
 import numpy as np
 import math
@@ -24,7 +25,7 @@ import random
 from supersuit import color_reduction_v0, frame_stack_v1, resize_v1
 
 
-from ipd_v6 import ipd
+from ipd_v7 import ipd
 from IPD_utils import batchify_obs, batchify, unbatchify, save_buffer, plot_buffer, save_loss, pop
 from AgentMaster import HeadNet, BootDQN, DQN, Agent_1, Agent_2 
 
@@ -37,8 +38,8 @@ parser.add_argument('--batch-size', type=int, default=128, help='input batch siz
 parser.add_argument('--num-episodes', type=int, default=10, help='number of epochs to train (default: 10)') 
 # args.seed <-- 1
 parser.add_argument('--seed', type=int, default=1, help='random seed (default: 1)') 
-# args.max_cycles <-- 96
-parser.add_argument('--max-cycles', type=int, default=96, help='number of cycles per episode (default: 96)') 
+# args.max_cycles <-- 16
+parser.add_argument('--max-cycles', type=int, default=16, help='number of cycles per episode (default: 96)') 
 # args.obs_lim <-- 3
 parser.add_argument('--obs-lim', type=int, default=3, help='observation chain length (default: 3)') 
 # args.memory_size <-- 98304
@@ -59,8 +60,8 @@ args = parser.parse_args(args=[])
 # torch.manual_seed(args.seed)
 
 ''' replay buffer for DQN''' # state = obs, next_state = next_obs
-# Transition = namedtuple('Transition',
-#                         ('state', 'action', 'next_state', 'reward', 'mask'))
+Transition = namedtuple('Transition',
+                        ('state', 'action', 'next_state', 'reward', 'mask'))
 class ReplayMemory(object):
 
     def __init__(self, capacity):
@@ -165,19 +166,36 @@ class TRAINER(object): # trainer for DQN agent
         state_batch = torch.cat(help_batch_state,0)
         action_batch = torch.cat(batch.action)
         reward_batch = torch.cat(batch.reward)
-        mask_batch = torch.cat(batch.mask)
+        mask_tensor = torch.stack(batch.mask)
+        # print('mask_tensor',mask_tensor)
+        # print('mask_tensor',mask_tensor.shape)
+        # mask_batch = torch.cat(batch.mask,0)
+        mask_batch = mask_tensor
+        # print('mask_batch',mask_batch)
 
         # take out the k-th element of mask_batch and dot corresp. head 
         for k in range(self.num_heads):
             mask_batch_k = []
-            for i in range(batch_size):
-                mask_batch_k.append(mask_batch[i][k])
-            mask_batch_k = torch.tensor(mask_batch_k).to(device)
-            state_action_values = self.policy_net(state_batch,k).gather(1, action_batch)
+            for i in range(self.batch_size):
+                # print(mask_batch)
+                mask_batch_k.append([mask_batch[i][k]])
+            mask_batch_k = torch.tensor(mask_batch_k).to(torch.float64).to(device)
+            # print('mask_batch_k',mask_batch_k)
+            state_action_values = self.policy_net(state_batch,k).gather(1, action_batch).to(torch.float64)
+            # print('state_action_values',state_action_values)
             next_state_values = torch.zeros(self.batch_size, device=self.device)
             next_state_values[non_final_mask] = self.target_net(non_final_next_states,k).max(1)[0].detach()
+            # Compute Huber loss
             criterion = nn.SmoothL1Loss()
-            loss = criterion(torch.dot(state_action_values,mask_batch_k), torch.dot(expected_state_action_values,mask_batch_k).unsqueeze(1))
+            expected_state_action_values = (next_state_values * self.GAMMA) + reward_batch
+            expected_state_action_values = expected_state_action_values.view(self.batch_size,1).to(self.device)
+            # print('expected_state_action_values',expected_state_action_values)
+            masked_state_action_values = self.OnedElementaryDot(state_action_values, mask_batch_k)
+            # print('masked_state_action_values',masked_state_action_values)
+            masked_expected_state_action_values = self.OnedElementaryDot(expected_state_action_values,mask_batch_k)
+            # print('masked_expected_state_action_values',masked_expected_state_action_values)
+            # print('criterion',criterion(masked_state_action_values, masked_expected_state_action_values))
+            loss = criterion(masked_state_action_values, masked_expected_state_action_values.unsqueeze(1))
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
@@ -212,9 +230,14 @@ class TRAINER(object): # trainer for DQN agent
             return self.policy_net(state,k).max(-1)[1].view(1, 1)
 
     def sample_mask(self,p,num_heads):
-        # prob = torch.empty(num_heads).uniform_(0, 1)
-        return torch.bernoulli(torch.tensor[p]).to(self.device)
-    
+        prob = torch.empty(num_heads).uniform_(0, 1)
+        # return torch.bernoulli(torch.tensor([p])).to(self.device)
+        return torch.bernoulli(prob).to(self.device)
+
+    def OnedElementaryDot(self,a,b):
+        for i in range(len(a)):
+            a[i] = torch.dot(a[i],b[i])
+        return a
 
     def train(self):
         '''variables'''
@@ -249,12 +272,13 @@ class TRAINER(object): # trainer for DQN agent
             next_obs = env.first_obs() # type: dict; {agent: 0 for agent in self.agents}
             OBS = [] # batch_obs
             # will gradually increase the depth challenge of exploration
-            if i_episode%100 == 0 and i_episode>3:
+            if i_episode%10 == 0 and i_episode>3:
                 OBS_LIM += 1
             OBS_lim = OBS_LIM # exploration depth
             
             for step in range(0, max_cycles):
                 obs = batchify_obs(next_obs, device)
+
                 if len(OBS) < OBS_lim:
                     OBS.append(obs)
                 else:
