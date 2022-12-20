@@ -137,6 +137,7 @@ class TRAINER(object): # trainer for DQN agent
         self.loss_buffer = [] 
         self.return_buffer = []
         self.action_buffer = []
+        self.return_buffer_x = []
         
     def optimize_model(self,memory):
         if len(memory) < self.batch_size: # 128
@@ -224,7 +225,7 @@ class TRAINER(object): # trainer for DQN agent
         # loss.backward()
         # self.loss_buffer.append(loss)
         # self.optimizer.step()
-        
+        print('Training Complete <batch>')
     def select_action(self,state,steps_done,k): # state = input(obs)
         with torch.no_grad():
             return self.policy_net(state,k).max(-1)[1].view(1, 1)
@@ -268,6 +269,7 @@ class TRAINER(object): # trainer for DQN agent
             steps_done = 0
             episode_durations = []
             total_episodic_return = 0
+            total_episodic_return_x = 0
             env.reset(seed=seed) # returns None
             next_obs = env.first_obs() # type: dict; {agent: 0 for agent in self.agents}
             OBS = [] # batch_obs
@@ -305,6 +307,7 @@ class TRAINER(object): # trainer for DQN agent
                 memory.push(actions, action, tensor_obs, m_rewards, mask) # memory.push(state, action, next_state, reward, mask)
                 # to record the return during training
                 total_episodic_return += rb_rewards[0].cpu().numpy()
+                total_episodic_return_x += rb_rewards[1].cpu().numpy()
                 # update target every TARGET_UPDATE steps
                 if step % TARGET_UPDATE == 0:
                     self.target_net.load_state_dict(self.policy_net.state_dict())
@@ -314,15 +317,17 @@ class TRAINER(object): # trainer for DQN agent
             # to record the return during training
             print('Data Buffering Complete')
             self.return_buffer.append(np.mean(total_episodic_return))
+            self.return_buffer_x.append(np.mean(total_episodic_return_x))
             # optimization
             self.optimize_model(memory)
-            print('Training Complete on this episode')
+            # print('Training Complete on this episode')
     
         
         print('ALL Trainings Complete')
-        print('>>> actions saved')
-        print('>>> training loss saved')
-        return self.return_buffer, self.loss_buffer, self.action_buffer
+        print('>>>>>>>>>> actions saved')
+        print('>>>>>>>>>> training loss saved')
+        print('>>>>>>>>>> return saved')
+        return self.return_buffer, self.return_buffer_x, self.loss_buffer, self.action_buffer
         
         
         
